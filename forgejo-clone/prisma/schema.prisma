@@ -1,0 +1,340 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+// USERS
+// ─────────────────────────────────────────────
+model User {
+  id            String   @id @default(cuid())
+  username      String   @unique
+  email         String   @unique
+  passwordHash  String
+  displayName   String?
+  bio           String?
+  avatarUrl     String?
+  websiteUrl    String?
+  location      String?
+  twitterHandle String?
+  role          UserRole @default(USER)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  repos           Repository[]
+  stars           Star[]
+  following       Follow[]       @relation("follower")
+  followers       Follow[]       @relation("following")
+  orgMemberships  OrgMember[]
+  issues          Issue[]
+  comments        Comment[]
+  sshKeys         SshKey[]
+  pinnedRepos     PinnedRepo[]
+  notifications   Notification[]
+  accessTokens    AccessToken[]
+
+  @@index([username])
+  @@index([email])
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+// ─────────────────────────────────────────────
+// SSH KEYS
+// ─────────────────────────────────────────────
+model SshKey {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  publicKey   String
+  fingerprint String   @unique
+  lastUsedAt  DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────
+// ACCESS TOKENS
+// ─────────────────────────────────────────────
+model AccessToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  token     String    @unique
+  scopes    String[]  @default([])
+  expiresAt DateTime?
+  lastUsedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([token])
+}
+
+// ─────────────────────────────────────────────
+// ORGANISATIONS
+// ─────────────────────────────────────────────
+model Organization {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  displayName String?
+  description String?
+  avatarUrl   String?
+  websiteUrl  String?
+  location    String?
+  isPublic    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members OrgMember[]
+  repos   Repository[]
+  teams   Team[]
+
+  @@index([name])
+}
+
+model OrgMember {
+  id     String  @id @default(cuid())
+  orgId  String
+  org    Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  userId String
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   OrgRole @default(MEMBER)
+  joinedAt DateTime @default(now())
+
+  @@unique([orgId, userId])
+  @@index([orgId])
+  @@index([userId])
+}
+
+enum OrgRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+model Team {
+  id          String       @id @default(cuid())
+  orgId       String
+  org         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  permission  RepoPermission @default(READ)
+  createdAt   DateTime     @default(now())
+
+  @@unique([orgId, name])
+}
+
+// ─────────────────────────────────────────────
+// REPOSITORIES
+// ─────────────────────────────────────────────
+model Repository {
+  id            String   @id @default(cuid())
+  name          String
+  description   String?
+  isPrivate     Boolean  @default(false)
+  isArchived    Boolean  @default(false)
+  isFork        Boolean  @default(false)
+  forkedFromId  String?
+  forkedFrom    Repository? @relation("forks", fields: [forkedFromId], references: [id])
+  forks         Repository[] @relation("forks")
+  defaultBranch String   @default("main")
+  language      String?
+  topics        String[] @default([])
+  license       String?
+  website       String?
+  starsCount    Int      @default(0)
+  forksCount    Int      @default(0)
+  watchersCount Int      @default(0)
+  openIssuesCount Int    @default(0)
+  size          Int      @default(0) // in KB
+  gitPath       String   // path on disk: /git-repos/{ownerType}/{owner}/{repo}.git
+
+  // Owner — either a user OR an org (one must be set)
+  ownerId  String?
+  owner    User?         @relation(fields: [ownerId], references: [id])
+  orgId    String?
+  org      Organization? @relation(fields: [orgId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  stars        Star[]
+  issues       Issue[]
+  releases     Release[]
+  webhooks     Webhook[]
+  collaborators RepoCollaborator[]
+  pinnedBy     PinnedRepo[]
+
+  @@unique([ownerId, name])
+  @@unique([orgId, name])
+  @@index([ownerId])
+  @@index([orgId])
+}
+
+enum RepoPermission {
+  READ
+  WRITE
+  ADMIN
+}
+
+model RepoCollaborator {
+  id         String         @id @default(cuid())
+  repoId     String
+  repo       Repository     @relation(fields: [repoId], references: [id], onDelete: Cascade)
+  userId     String
+  permission RepoPermission @default(READ)
+  addedAt    DateTime       @default(now())
+
+  @@unique([repoId, userId])
+}
+
+// ─────────────────────────────────────────────
+// STARS & FOLLOWS & PINS
+// ─────────────────────────────────────────────
+model Star {
+  id        String     @id @default(cuid())
+  userId    String
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  repoId    String
+  repo      Repository @relation(fields: [repoId], references: [id], onDelete: Cascade)
+  createdAt DateTime   @default(now())
+
+  @@unique([userId, repoId])
+  @@index([repoId])
+}
+
+model Follow {
+  id          String   @id @default(cuid())
+  followerId  String
+  follower    User     @relation("follower", fields: [followerId], references: [id], onDelete: Cascade)
+  followingId String
+  following   User     @relation("following", fields: [followingId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@unique([followerId, followingId])
+}
+
+model PinnedRepo {
+  id        String     @id @default(cuid())
+  userId    String
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  repoId    String
+  repo      Repository @relation(fields: [repoId], references: [id], onDelete: Cascade)
+  position  Int        @default(0)
+  createdAt DateTime   @default(now())
+
+  @@unique([userId, repoId])
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────
+// ISSUES
+// ─────────────────────────────────────────────
+model Issue {
+  id         String      @id @default(cuid())
+  repoId     String
+  repo       Repository  @relation(fields: [repoId], references: [id], onDelete: Cascade)
+  number     Int
+  title      String
+  body       String?
+  state      IssueState  @default(OPEN)
+  authorId   String
+  author     User        @relation(fields: [authorId], references: [id])
+  labels     String[]    @default([])
+  closedAt   DateTime?
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  comments   Comment[]
+
+  @@unique([repoId, number])
+  @@index([repoId])
+}
+
+enum IssueState {
+  OPEN
+  CLOSED
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  issueId   String
+  issue     Issue    @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+  body      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([issueId])
+}
+
+// ─────────────────────────────────────────────
+// RELEASES
+// ─────────────────────────────────────────────
+model Release {
+  id          String     @id @default(cuid())
+  repoId      String
+  repo        Repository @relation(fields: [repoId], references: [id], onDelete: Cascade)
+  tagName     String
+  name        String?
+  body        String?
+  isDraft     Boolean    @default(false)
+  isPrerelease Boolean   @default(false)
+  createdAt   DateTime   @default(now())
+
+  @@unique([repoId, tagName])
+}
+
+// ─────────────────────────────────────────────
+// WEBHOOKS
+// ─────────────────────────────────────────────
+model Webhook {
+  id         String     @id @default(cuid())
+  repoId     String
+  repo       Repository @relation(fields: [repoId], references: [id], onDelete: Cascade)
+  url        String
+  secret     String?
+  events     String[]   @default([])
+  isActive   Boolean    @default(true)
+  createdAt  DateTime   @default(now())
+}
+
+// ─────────────────────────────────────────────
+// NOTIFICATIONS
+// ─────────────────────────────────────────────
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  body      String?
+  link      String?
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  @@index([userId, isRead])
+}
+
+enum NotificationType {
+  STAR
+  FORK
+  ISSUE_OPENED
+  ISSUE_CLOSED
+  COMMENT
+  FOLLOW
+  MENTION
+}
