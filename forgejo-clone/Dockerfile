@@ -4,8 +4,9 @@ RUN apk add --no-cache git libc6-compat
 # ─── Dependencies ────────────────────────────
 FROM base AS deps
 WORKDIR /app
-COPY package.json package-lock.json* ./
-RUN npm ci
+COPY package.json ./
+# npm install au lieu de npm ci (pas besoin de package-lock.json)
+RUN npm install
 
 # ─── Builder ─────────────────────────────────
 FROM base AS builder
@@ -13,24 +14,23 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Generate Prisma client
 RUN npx prisma generate
 
-# Build Next.js
-ENV NEXT_TELEMETRY_DISABLED 1
+ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
 # ─── Runner ──────────────────────────────────
 FROM base AS runner
 WORKDIR /app
 
-ENV NODE_ENV production
-ENV NEXT_TELEMETRY_DISABLED 1
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-# Git repos storage
 RUN mkdir -p /git-repos && chown nextjs:nodejs /git-repos
 
 COPY --from=builder /app/public ./public
@@ -43,8 +43,4 @@ USER nextjs
 
 EXPOSE 3000
 
-ENV PORT 3000
-ENV HOSTNAME "0.0.0.0"
-
-# Run migrations then start
 CMD ["sh", "-c", "npx prisma migrate deploy && node server.js"]
