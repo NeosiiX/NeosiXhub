@@ -38,8 +38,10 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
 
 USER nextjs
 EXPOSE 3000
 
-CMD ["sh", "-c", "until npx prisma db push --accept-data-loss; do echo 'Waiting for DB...'; sleep 5; done && node server.js"]
+# Utiliser la version locale de Prisma (5.x) au lieu de npx qui télécharge la 7.x
+CMD ["sh", "-c", "until node_modules/prisma/build/index.js db push --accept-data-loss; do echo 'Waiting for DB...'; sleep 5; done && node server.js"]
