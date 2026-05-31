@@ -1,6 +1,5 @@
 FROM node:20-alpine AS base
-# Installer OpenSSL 1.1 (requis par Prisma) + git
-RUN apk add --no-cache git libc6-compat openssl1.1-compat
+RUN apk add --no-cache git libc6-compat openssl
 
 # ─── Dependencies ────────────────────────────
 FROM base AS deps
@@ -14,8 +13,6 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Forcer Prisma à utiliser le bon binaire pour Alpine (musl)
-ENV PRISMA_QUERY_ENGINE_LIBRARY=/app/node_modules/.prisma/client/libquery_engine-linux-musl-openssl-1.1.x.so.node
 RUN npx prisma generate
 
 ENV NEXT_TELEMETRY_DISABLED=1
